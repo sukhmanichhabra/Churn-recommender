@@ -4,107 +4,116 @@ import numpy as np
 import joblib
 from sklearn.metrics.pairwise import cosine_similarity
 
-# Load the saved CatBoost model
+# Load the saved Random Forest model
 try:
-    model = joblib.load('rf_model.pkl')
-    st.success("CatBoost model loaded successfully!")
+    model = joblib.load('catboost_model.pkl')
+    st.success("Random Forest model loaded successfully!")
 except FileNotFoundError:
-    st.error("Model file 'churn_prediction_model.pkl' not found. Please make sure the file is in the same directory.")
+    st.error("Model file 'rf_model.pkl' not found. Please make sure the file is in the same directory.")
     st.stop()
 
 # Define columns used during training
-model_columns = [
-    'gender', 'SeniorCitizen', 'Partner', 'Dependents', 'tenure',
-    'PhoneService', 'OnlineSecurity', 'OnlineBackup', 'DeviceProtection',
-    'TechSupport', 'StreamingTV', 'StreamingMovies', 'PaperlessBilling',
-    'MonthlyCharges', 'TotalCharges', 'MultipleLines_No',
-    'MultipleLines_Yes', 'InternetService_DSL',
-    'InternetService_Fiber optic', 'InternetService_No',
-    'Contract_Month-to-month', 'Contract_One year', 'Contract_Two year',
-    'PaymentMethod_Bank transfer (automatic)',
-    'PaymentMethod_Credit card (automatic)',
-    'PaymentMethod_Electronic check', 'PaymentMethod_Mailed check'
-]
+model_columns = ['SeniorCitizen', 'tenure', 'MonthlyCharges', 'TotalCharges',
+       'gender_Female', 'gender_Male', 'Partner_No', 'Partner_Yes',
+       'Dependents_No', 'Dependents_Yes', 'PhoneService_No',
+       'PhoneService_Yes', 'MultipleLines_No',
+       'MultipleLines_No phone service', 'MultipleLines_Yes',
+       'InternetService_DSL', 'InternetService_Fiber optic',
+       'InternetService_No', 'OnlineSecurity_No',
+       'OnlineSecurity_No internet service', 'OnlineSecurity_Yes',
+       'OnlineBackup_No', 'OnlineBackup_No internet service',
+       'OnlineBackup_Yes', 'DeviceProtection_No',
+       'DeviceProtection_No internet service', 'DeviceProtection_Yes',
+       'TechSupport_No', 'TechSupport_No internet service', 'TechSupport_Yes',
+       'StreamingTV_No', 'StreamingTV_No internet service', 'StreamingTV_Yes',
+       'StreamingMovies_No', 'StreamingMovies_No internet service',
+       'StreamingMovies_Yes', 'Contract_Month-to-month', 'Contract_One year',
+       'Contract_Two year', 'PaperlessBilling_No', 'PaperlessBilling_Yes',
+       'PaymentMethod_Bank transfer (automatic)',
+       'PaymentMethod_Credit card (automatic)',
+       'PaymentMethod_Electronic check', 'PaymentMethod_Mailed check']
 
 # Load customer data for recommendations
 X = pd.read_csv('WA_Fn-UseC_-Telco-Customer-Churn.csv')
-y = X['Churn'].apply(lambda x: 1 if x == 'Yes' else 0)  # Target variable for churn status
+y = X['Churn'].apply(lambda x: 1 if x == 'Yes' else 0)
 
 # UI Elements
 st.title("Customer Churn Prediction and Recommendation System")
 
-# User input fields
+# Collect user inputs for each feature
 gender = st.selectbox("Gender", options=['Male', 'Female'], index=1)
+senior_citizen = st.selectbox("Senior Citizen", options=[0, 1], index=0)
+partner = st.selectbox("Partner", options=['Yes', 'No'], index=1)
+dependents = st.selectbox("Dependents", options=['Yes', 'No'], index=1)
 tenure = st.slider("Tenure", min_value=0, max_value=100, value=24)
+phone_service = st.selectbox("Phone Service", options=['Yes', 'No'], index=0)
+multiple_lines = st.selectbox("Multiple Lines", options=['Yes', 'No'], index=1)
+internet_service = st.selectbox("Internet Service", options=['DSL', 'Fiber optic', 'No'], index=0)
+online_security = st.selectbox("Online Security", options=['Yes', 'No'], index=1)
+online_backup = st.selectbox("Online Backup", options=['Yes', 'No'], index=1)
+device_protection = st.selectbox("Device Protection", options=['Yes', 'No'], index=1)
+tech_support = st.selectbox("Tech Support", options=['Yes', 'No'], index=1)
+streaming_tv = st.selectbox("Streaming TV", options=['Yes', 'No'], index=1)
+streaming_movies = st.selectbox("Streaming Movies", options=['Yes', 'No'], index=1)
+paperless_billing = st.selectbox("Paperless Billing", options=['Yes', 'No'], index=0)
 monthly_charges = st.number_input("Monthly Charges", value=70.0)
 total_charges = st.number_input("Total Charges", value=840.0)
-paperless_billing = st.selectbox("Paperless Billing", options=['Yes', 'No'], index=0)
+contract = st.selectbox("Contract", options=['Month-to-month', 'One year', 'Two year'], index=0)
+payment_method = st.selectbox(
+    "Payment Method",
+    options=[
+        'Bank transfer (automatic)', 'Credit card (automatic)',
+        'Electronic check', 'Mailed check'
+    ],
+    index=2
+)
 
-# Default values for other features
-default_values = {
-    'SeniorCitizen': 0,
-    'Partner': 'No',
-    'Dependents': 'No',
-    'PhoneService': 'Yes',
-    'MultipleLines': 'No',
-    'InternetService': 'DSL',
-    'OnlineSecurity': 'No',
-    'OnlineBackup': 'No',
-    'DeviceProtection': 'No',
-    'TechSupport': 'No',
-    'StreamingTV': 'No',
-    'StreamingMovies': 'No',
-    'Contract': 'Month-to-month',
-    'PaymentMethod': 'Electronic check',
-}
-
-# Assemble user inputs
+# Assemble user inputs into a dictionary
 input_data = {
     'gender': gender,
-    'SeniorCitizen': default_values['SeniorCitizen'],
-    'Partner': default_values['Partner'],
-    'Dependents': default_values['Dependents'],
+    'SeniorCitizen': senior_citizen,
+    'Partner': partner,
+    'Dependents': dependents,
     'tenure': tenure,
-    'PhoneService': default_values['PhoneService'],
-    'MultipleLines': default_values['MultipleLines'],
-    'InternetService': default_values['InternetService'],
-    'OnlineSecurity': default_values['OnlineSecurity'],
-    'OnlineBackup': default_values['OnlineBackup'],
-    'DeviceProtection': default_values['DeviceProtection'],
-    'TechSupport': default_values['TechSupport'],
-    'StreamingTV': default_values['StreamingTV'],
-    'StreamingMovies': default_values['StreamingMovies'],
+    'PhoneService': phone_service,
+    'MultipleLines': multiple_lines,
+    'InternetService': internet_service,
+    'OnlineSecurity': online_security,
+    'OnlineBackup': online_backup,
+    'DeviceProtection': device_protection,
+    'TechSupport': tech_support,
+    'StreamingTV': streaming_tv,
+    'StreamingMovies': streaming_movies,
     'PaperlessBilling': paperless_billing,
     'MonthlyCharges': monthly_charges,
     'TotalCharges': total_charges,
-    'Contract': default_values['Contract'],
-    'PaymentMethod': default_values['PaymentMethod'],
+    'Contract': contract,
+    'PaymentMethod': payment_method,
 }
 
+# Convert the input data to a DataFrame
 input_df = pd.DataFrame([input_data])
+
+# One-hot encode the user input to match the training format
 input_encoded = pd.get_dummies(input_df)
 
-# Add missing columns with 0s for alignment with model_columns
+# Ensure all model columns are in the encoded input
 for col in model_columns:
     if col not in input_encoded.columns:
-        input_encoded[col] = 0
+        input_encoded[col] = 0  # Add missing columns with a value of 0
 
-# Reorder columns to match model requirements
+# Reorder columns to match the model's expected input format
 input_encoded = input_encoded[model_columns]
 
 # Define function to generate recommendations
 def generate_recommendations(user_data):
-    # Filter for churned customers
     churned_customers = X[X['Churn'] == 'Yes']
-
-    # Average thresholds based on churned customers
     avg_tenure = np.mean(churned_customers['tenure'])
     avg_monthly_charges = np.mean(churned_customers['MonthlyCharges'])
     avg_total_charges = np.mean(churned_customers['TotalCharges'].replace(' ', '0').astype(float))
     majority_gender = churned_customers['gender'].mode()[0]
     recommendations = {}
 
-    # Example recommendation conditions
     if user_data['Contract'] == 'Month-to-month':
         recommendations['Contract'] = "Consider offering a discounted long-term contract."
     if user_data['PaperlessBilling'] == 'No':
@@ -113,51 +122,39 @@ def generate_recommendations(user_data):
         recommendations['InternetService'] = "Consider upgrading to fiber optic for better service."
     if user_data['OnlineSecurity'] == 'No':
         recommendations['OnlineSecurity'] = "Promote online security services as an add-on."
-    if user_data['OnlineBackup'] =='No':
+    if user_data['OnlineBackup'] == 'No':
         recommendations['OnlineBackup'] = "Include online backup service."
-    if user_data['DeviceProtection'] == 0:
+    if user_data['DeviceProtection'] == 'No':
         recommendations['DeviceProtection'] = "Add device protection plan."
-    if user_data['StreamingTV'] == 0 :
-        if user_data['StreamingMovies'] == 0:
-            recommendations['StreamingTV'] = "Suggest TV & Movies streaming services at discounted prices."
-    # Recommendations based on tenure
+    if user_data['StreamingTV'] == 'No' and user_data['StreamingMovies'] == 'No':
+        recommendations['StreamingTV'] = "Suggest TV & Movies streaming services at discounted prices."
     if user_data['tenure'] < avg_tenure:
         recommendations['Tenure'] = "Offer loyalty incentives to increase customer tenure"
-
-    # Recommendations based on monthly charges
     if user_data['MonthlyCharges'] > avg_monthly_charges:
         recommendations['MonthlyCharges'] = "Provide a customized discount to reduce monthly charges"
-    
-    # Recommendations based on total charges
     if user_data['TotalCharges'] < avg_total_charges:
         recommendations['TotalCharges'] = "Consider suggesting a higher-tier plan to enhance service experience"
-
-    # Gender-based recommendations
     if user_data['gender'] != majority_gender:
         recommendations['Gender'] = f"Consider targeted marketing strategies appealing to {user_data['gender']} customers"
-
-
+    
     return recommendations
 
 # Churn prediction and recommendations
 if st.button("Predict Churn and Get Recommendations"):
-    # Churn prediction and probability
+    st.write(input_encoded)
     prediction = model.predict(input_encoded)
     churn_prob = model.predict_proba(input_encoded)[0][1]
 
-    st.write(f"**Predicted Churn:** {'Yes' if prediction[0] == 1 else 'No'}")
+    # st.write(f"**Predicted Churn:** {'Yes' if churn_prob > 50 else 'No'}")
     st.write(f"**Churn Probability:** {churn_prob:.2%}")
 
-    # Generate personalized recommendations
     recommendations = generate_recommendations(input_data)
 
-    # Organized display of recommendations
     with st.expander("🔍 Personalized Recommendations", expanded=True):
         st.write("Based on your current profile, we suggest the following actions:")
         for key, recommendation in recommendations.items():
             st.write(f"- **{recommendation}**")
 
-    # Calculate cosine similarity between input and customer profiles
     customer_profiles_encoded = pd.get_dummies(X)
     for col in model_columns:
         if col not in customer_profiles_encoded.columns:
@@ -167,7 +164,6 @@ if st.button("Predict Churn and Get Recommendations"):
     similarities = cosine_similarity(input_encoded, customer_profiles_encoded)
     similar_customer_indices = similarities.argsort()[0][-5:]
 
-    # Display similar customer information
     with st.expander("📋 Insights from Similar Customers"):
         st.write("Here are profiles of customers similar to yours:")
         for idx in similar_customer_indices:
@@ -175,9 +171,7 @@ if st.button("Predict Churn and Get Recommendations"):
             st.write(f"  - Contract: **{X.iloc[idx]['Contract']}**")
             st.write(f"  - Monthly Charges: **${X.iloc[idx]['MonthlyCharges']:.2f}**")
 
-    # Additional retention strategies
     with st.expander("📈 Additional Retention Strategies"):
         st.write("To enhance retention, consider implementing these strategies:")
         st.write("- **Offer discounts on long-term contracts** to incentivize loyalty.")
-        st.write("- **Promote online security or device protection services** to add more value to the subscription.")
-
+        st.write("- **Promote online security or device protection services** to increase customer satisfaction.")
